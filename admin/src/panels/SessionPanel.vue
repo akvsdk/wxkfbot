@@ -90,7 +90,7 @@
         </div>
 
         <!-- 消息输入区 -->
-        <div class="chat-input">
+        <div class="chat-input" @paste="handlePaste">
           <!-- 工具栏 -->
           <div class="composer-toolbar">
             <button v-for="t in msgTypes" :key="t.value" :class="['tool-btn', { active: msgType === t.value }]" @click="msgType = t.value" :title="t.label">
@@ -654,7 +654,56 @@ function handleDrop(e: DragEvent) {
     if (!checkFileSize(file)) return
     mediaFile.value = file
     mediaFileName.value = file.name
+    autoDetectMsgType(file)
     uploadMedia()
+  }
+}
+
+function handlePaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.kind === 'file') {
+      e.preventDefault()
+      const file = item.getAsFile()
+      if (!file) return
+      const detectedType = detectMediaType(file)
+      if (!detectedType) {
+        ElMessage.warning('不支持的文件类型')
+        return
+      }
+      msgType.value = detectedType
+      if (!checkFileSize(file)) return
+      mediaFile.value = file
+      mediaFileName.value = file.name || `paste_${Date.now()}.${getExt(file)}`
+      uploadMedia()
+      return
+    }
+  }
+}
+
+function detectMediaType(file: File): string | null {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  if (file.type.startsWith('audio/')) return 'voice'
+  if (file.type) return 'file'
+  return 'file'
+}
+
+function getExt(file: File): string {
+  if (file.type === 'image/png') return 'png'
+  if (file.type === 'image/jpeg') return 'jpg'
+  if (file.type === 'image/gif') return 'gif'
+  if (file.type.startsWith('video/')) return 'mp4'
+  if (file.type.startsWith('audio/')) return 'amr'
+  return 'bin'
+}
+
+function autoDetectMsgType(file: File) {
+  const detected = detectMediaType(file)
+  if (detected && ['image', 'voice', 'video', 'file'].includes(msgType.value)) {
+    msgType.value = detected
   }
 }
 
