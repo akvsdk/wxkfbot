@@ -52,7 +52,9 @@
         </div>
 
         <!-- 消息列表 -->
-        <div class="chat-messages" ref="msgContainer">
+        <div class="chat-messages" ref="msgContainer" @scroll="handleMessagesScroll">
+          <div v-if="loadingMore" class="load-more-tip">加载中...</div>
+          <div v-else-if="hasMore" class="load-more-tip clickable" @click="loadMoreMessages">加载更多</div>
           <div v-for="msg in messages" :key="msg.msgid" class="msg-row" :class="msgDirection(msg)">
             <template v-if="msgDirection(msg) === 'incoming'">
               <div class="msg-avatar">
@@ -271,6 +273,7 @@ import { api, mediaUrl } from '../api'
 
 const loading = ref(false)
 const msgLoading = ref(false)
+const loadingMore = ref(false)
 const sending = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref(0)
@@ -284,6 +287,8 @@ const sessions = ref<any[]>([])
 const current = ref<any>(null)
 const messages = ref<any[]>([])
 const msgContainer = ref<HTMLElement>()
+const hasMore = ref(false)
+const nextCursor = ref('')
 
 const msgType = ref('text')
 const textContent = ref('')
@@ -525,35 +530,76 @@ async function loadMessages(silent = false) {
   if (!silent) msgLoading.value = true
   try {
     const [syncRes, sentRes] = await Promise.all([
-      api.post('/kf/sync_msg', { limit: 1000, open_kfid: current.value.open_kfid }),
+      api.post('/kf/sync_msg', { limit: 50, open_kfid: current.value.open_kfid }),
       api.post('/kf/sent_messages', { open_kfid: current.value.open_kfid, external_userid: current.value.external_userid }),
     ])
     const incomingMsgs = (syncRes?.msg_list || [])
       .filter((m: any) => m.external_userid === current.value.external_userid && m.open_kfid === current.value.open_kfid)
     const sentMsgs = sentRes?.msg_list || []
+    hasMore.value = !!syncRes?.has_more
+    nextCursor.value = syncRes?.next_cursor || ''
 
-    // 去重：以 msgid 为主键，sent_ 前缀的消息如果 sync 里已有相同时间和类型则跳过
-    const seen = new Set(incomingMsgs.map((m: any) => m.msgid))
-    const incomingTimes = new Set(incomingMsgs.map((m: any) => `${m.send_time}_${m.msgtype}_${m.origin}`))
-    const dedupedSent = sentMsgs.filter((m: any) => {
-      if (seen.has(m.msgid)) return false
-      // 如果 sync 已包含相同时间+类型+origin=5 的消息，视为重复
-      if (incomingTimes.has(`${m.send_time}_${m.msgtype}_5`)) return false
-      return true
-    })
-
-    const merged = [...incomingMsgs, ...dedupedSent]
-      .sort((a: any, b: any) => (a.send_time || 0) - (b.send_time || 0))
-    const hadNewMsg = merged.length > messages.value.length
+    const merged = deduplicateMessages(incomingMsgs, sentMsgs)
     messages.value = merged
-    if (hadNewMsg) {
-      await nextTick()
-      scrollToBottom()
-    }
+    await nextTick()
+    scrollToBottom()
   } catch (_) {
     if (!silent) ElMessage.error('加载消息失败')
   } finally {
     msgLoading.value = false
+  }
+}
+
+async function loadMoreMessages() {
+  if (!current.value || !hasMore.value || loadingMore.value) return
+  loadingMore.value = true
+  const container = msgContainer.value
+  const prevHeight = container?.scrollHeight || 0
+  try {
+    const syncRes = await api.post('/kf/sync_msg', {
+      limit: 50,
+      open_kfid: current.value.open_kfid,
+      cursor: nextCursor.value,
+    })
+    const olderMsgs = (syncRes?.msg_list || [])
+      .filter((m: any) => m.external_userid === current.value.external_userid && m.open_kfid === current.value.open_kfid)
+    hasMore.value = !!syncRes?.has_more
+    nextCursor.value = syncRes?.next_cursor || ''
+
+    if (olderMsgs.length) {
+      const existingIds = new Set(messages.value.map((m: any) => m.msgid))
+      const newMsgs = olderMsgs.filter((m: any) => !existingIds.has(m.msgid))
+      messages.value = [...newMsgs, ...messages.value]
+        .sort((a: any, b: any) => (a.send_time || 0) - (b.send_time || 0))
+      await nextTick()
+      if (container) {
+        container.scrollTop = container.scrollHeight - prevHeight
+      }
+    }
+  } catch (_) {
+    ElMessage.error('加载更多消息失败')
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+function deduplicateMessages(incomingMsgs: any[], sentMsgs: any[]) {
+  const seen = new Set(incomingMsgs.map((m: any) => m.msgid))
+  const incomingTimes = new Set(incomingMsgs.map((m: any) => `${m.send_time}_${m.msgtype}_${m.origin}`))
+  const dedupedSent = sentMsgs.filter((m: any) => {
+    if (seen.has(m.msgid)) return false
+    if (incomingTimes.has(`${m.send_time}_${m.msgtype}_5`)) return false
+    return true
+  })
+  return [...incomingMsgs, ...dedupedSent]
+    .sort((a: any, b: any) => (a.send_time || 0) - (b.send_time || 0))
+}
+
+function handleMessagesScroll() {
+  const container = msgContainer.value
+  if (!container) return
+  if (container.scrollTop < 60 && hasMore.value && !loadingMore.value) {
+    loadMoreMessages()
   }
 }
 
@@ -881,6 +927,15 @@ onUnmounted(() => {
   gap: 16px;
   background: #ebebeb;
 }
+
+.load-more-tip {
+  text-align: center;
+  font-size: 12px;
+  color: #999;
+  padding: 8px 0;
+}
+.load-more-tip.clickable { cursor: pointer; }
+.load-more-tip.clickable:hover { color: var(--el-color-primary); }
 
 .msg-row {
   display: flex;
