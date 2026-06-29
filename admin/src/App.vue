@@ -56,6 +56,7 @@
           <MessagePanel v-else-if="activeMenu === 'messages'" />
           <StatisticsPanel v-else-if="activeMenu === 'statistics'" />
           <SettingsPanel v-else-if="activeMenu === 'settings'" />
+          <DebugPanel v-else-if="activeMenu === 'debug'" />
         </transition>
       </div>
     </main>
@@ -71,6 +72,7 @@ import SessionPanel from './panels/SessionPanel.vue'
 import MessagePanel from './panels/MessagePanel.vue'
 import StatisticsPanel from './panels/StatisticsPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
+import DebugPanel from './panels/DebugPanel.vue'
 
 const authenticated = ref(false)
 const checking = ref(false)
@@ -84,6 +86,7 @@ const menuItems = [
   { key: 'messages', label: '消息同步', icon: 'Message' },
   { key: 'statistics', label: '统计数据', icon: 'DataAnalysis' },
   { key: 'settings', label: '系统设置', icon: 'Setting' },
+  { key: 'debug', label: 'Debug', icon: 'Monitor' },
 ]
 
 const pageTitles: Record<string, string> = {
@@ -92,6 +95,7 @@ const pageTitles: Record<string, string> = {
   messages: '消息同步',
   statistics: '统计数据',
   settings: '系统设置',
+  debug: 'Debug 日志',
 }
 const pageTitle = computed(() => pageTitles[activeMenu.value] || '')
 

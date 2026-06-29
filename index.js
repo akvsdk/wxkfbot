@@ -6,6 +6,7 @@ import { OpenAIClient, WeChatClient } from './clients.js';
 import { getAIConfig, getServiceStatus, validateAIConfig } from './config.js';
 import { ConversationManager } from './conversation.js';
 import { WXBizMsgCrypt, XMLParse } from './crypto.js';
+import { DebugLogger, getDebugEnabled, setDebugEnabled, getDebugLogs, clearDebugLogs } from './debug-logger.js';
 import { MessageTracker } from './message-tracker.js';
 import { ApiResponse, BusinessCode, ErrorMessage } from './response.js';
 import {
@@ -59,6 +60,33 @@ export default {
                 const authError = verifyAdminKey(request, env);
                 if (authError) return authError;
                 return handleSetWebhookRules(request, env);
+            }
+
+            // ==================== Debug 日志 ====================
+            if (url.pathname === '/debug/status' && request.method === 'GET') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                const enabled = await getDebugEnabled(env.CONVERSATIONS);
+                return ApiResponse.success({ enabled });
+            }
+            if (url.pathname === '/debug/toggle' && request.method === 'POST') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                const body = await request.json();
+                await setDebugEnabled(env.CONVERSATIONS, !!body.enabled);
+                return ApiResponse.success(null, `Debug 日志已${body.enabled ? '开启' : '关闭'}`);
+            }
+            if (url.pathname === '/debug/logs' && request.method === 'GET') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                const logs = await getDebugLogs(env.CONVERSATIONS);
+                return ApiResponse.success({ logs });
+            }
+            if (url.pathname === '/debug/clear' && request.method === 'POST') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                await clearDebugLogs(env.CONVERSATIONS);
+                return ApiResponse.success(null, '日志已清空');
             }
 
             if (url.pathname === '/conversation_stats' && request.method === 'GET') {
@@ -613,6 +641,7 @@ async function handleCallback(request, env, ctx) {
  */
 async function handleCallbackAsync(postData, env, params) {
     const messageTracker = new MessageTracker(env.MESSAGE_TRACKER);
+    const debugLogger = new DebugLogger(env.CONVERSATIONS);
 
     try {
         // 使用WXBizMsgCrypt解密消息
@@ -627,6 +656,7 @@ async function handleCallbackAsync(postData, env, params) {
 
         if (ret !== 0) {
             console.error('签名验证失败:', ret);
+            await debugLogger.error('callback', '签名验证失败', { ret, params });
             return;
         }
 
@@ -665,6 +695,7 @@ async function handleCallbackAsync(postData, env, params) {
         });
     } catch (error) {
         console.error('处理回调消息失败:', error);
+        await debugLogger.error('callback', `处理回调消息失败: ${error.message}`, { stack: error.stack });
         // 标记为处理失败
         await messageTracker.markMessageAsProcessed(params.msgSignature, {
             timestamp: params.timestamp,
@@ -684,6 +715,7 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
         throw new Error('CONVERSATIONS or MESSAGE_TRACKER KV namespace not configured');
     }
 
+    const debugLogger = new DebugLogger(env.CONVERSATIONS);
     const messageTracker = new MessageTracker(env.MESSAGE_TRACKER);
     const isProcessed = await messageTracker.isMessageProcessed(msgid);
 
@@ -808,6 +840,9 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
         });
     } catch (error) {
         console.error('AI处理失败:', error);
+        await debugLogger.error('processMessage', `AI处理失败: ${error.message}`, {
+            externalUserid, content, msgid, msgKfId, stack: error.stack,
+        });
 
         // 发送错误提示给用户
         const errorMessage = '抱歉，AI服务暂时不可用，请稍后再试。';
@@ -815,6 +850,9 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
             await wxClient.sendTextMessage(externalUserid, msgKfId, errorMessage);
         } catch (sendError) {
             console.error('发送错误消息失败:', sendError);
+            await debugLogger.error('wechat-api', `发送错误消息失败: ${sendError.message}`, {
+                externalUserid, msgKfId,
+            });
         }
 
         // 标记消息为已处理（即使失败也要标记，避免重复处理）

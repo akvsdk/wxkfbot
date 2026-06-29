@@ -20,7 +20,19 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true,
       },
+      '/ai_config': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
       '/system_prompt': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      '/webhook_rules': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      '/debug': {
         target: 'http://localhost:8787',
         changeOrigin: true,
       },
