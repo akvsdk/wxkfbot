@@ -8,6 +8,13 @@ import { ConversationManager } from './conversation.js';
 import { WXBizMsgCrypt, XMLParse } from './crypto.js';
 import { MessageTracker } from './message-tracker.js';
 import { ApiResponse, BusinessCode, ErrorMessage } from './response.js';
+import {
+    handleKFAccountList, handleKFAccountAdd, handleKFAccountUpdate, handleKFAccountDelete,
+    handleKFContactWay,
+    handleKFServiceState, handleKFServiceStateTrans, handleKFSendMessage, handleKFSyncMsg,
+    handleKFCustomerInfo, handleKFStatistics, handleKFRecallMsg, handleKFSendWelcomeMsg,
+    handleKFSentMessages, handleKFMediaProxy,
+} from './kf-routes.js';
 
 export default {
     async fetch(request, env, ctx) {
@@ -25,7 +32,33 @@ export default {
             }
 
             if (url.pathname === '/ai_status' && request.method === 'GET') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
                 return handleAIStatus(env, ctx);
+            }
+
+            if (url.pathname === '/system_prompt' && request.method === 'POST') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                return handleSetSystemPrompt(request, env);
+            }
+
+            if (url.pathname === '/ai_config' && request.method === 'POST') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                return handleSetAIConfig(request, env);
+            }
+
+            if (url.pathname === '/webhook_rules' && request.method === 'GET') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                return handleGetWebhookRules(env);
+            }
+
+            if (url.pathname === '/webhook_rules' && request.method === 'POST') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                return handleSetWebhookRules(request, env);
             }
 
             if (url.pathname === '/conversation_stats' && request.method === 'GET') {
@@ -58,6 +91,63 @@ export default {
                 } else if (request.method === 'POST') {
                     return handleCallback(request, env, ctx);
                 }
+            }
+
+            // ==================== 客服管理API ====================
+            // 管理接口鉴权
+            if (url.pathname.startsWith('/kf/') || url.pathname === '/admin') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+            }
+
+            if (url.pathname === '/kf/accounts' && request.method === 'GET') {
+                return handleKFAccountList(env);
+            }
+            if (url.pathname === '/kf/account/add' && request.method === 'POST') {
+                return handleKFAccountAdd(request, env);
+            }
+            if (url.pathname === '/kf/account/update' && request.method === 'POST') {
+                return handleKFAccountUpdate(request, env);
+            }
+            if (url.pathname === '/kf/account/delete' && request.method === 'POST') {
+                return handleKFAccountDelete(request, env);
+            }
+            if (url.pathname === '/kf/contact_way' && request.method === 'POST') {
+                return handleKFContactWay(request, env);
+            }
+            if (url.pathname === '/kf/service_state' && request.method === 'POST') {
+                return handleKFServiceState(request, env);
+            }
+            if (url.pathname === '/kf/service_state/trans' && request.method === 'POST') {
+                return handleKFServiceStateTrans(request, env);
+            }
+            if (url.pathname === '/kf/send_msg' && request.method === 'POST') {
+                return handleKFSendMessage(request, env);
+            }
+            if (url.pathname === '/kf/sync_msg' && request.method === 'POST') {
+                return handleKFSyncMsg(request, env);
+            }
+            if (url.pathname === '/kf/sent_messages' && request.method === 'POST') {
+                return handleKFSentMessages(request, env);
+            }
+            if (url.pathname === '/kf/customer/info' && request.method === 'POST') {
+                return handleKFCustomerInfo(request, env);
+            }
+            if (url.pathname === '/kf/statistics' && request.method === 'POST') {
+                return handleKFStatistics(request, env);
+            }
+            if (url.pathname === '/kf/recall_msg' && request.method === 'POST') {
+                return handleKFRecallMsg(request, env);
+            }
+            if (url.pathname === '/kf/media' && request.method === 'GET') {
+                return handleKFMediaProxy(request, env);
+            }
+            if (url.pathname === '/kf/send_welcome_msg' && request.method === 'POST') {
+                return handleKFSendWelcomeMsg(request, env);
+            }
+            // ==================== 管理界面 ====================
+            if (url.pathname === '/admin' && request.method === 'GET') {
+                return handleAdminPage(env);
             }
 
             return ApiResponse.notFound('API端点未找到');
@@ -108,6 +198,20 @@ async function handleAIStatus(env, ctx) {
         const aiConfig = getAIConfig(env);
         validateAIConfig(aiConfig);
         const status = getServiceStatus(aiConfig);
+        let prompt = env.SYSTEM_PROMPT || '';
+        try {
+            const kvPrompt = await env.CONVERSATIONS.get('__SYSTEM_PROMPT__');
+            if (kvPrompt) prompt = kvPrompt;
+            const kvModel = await env.CONVERSATIONS.get('__AI_MODEL__');
+            if (kvModel) status.model = kvModel;
+            const kvBaseUrl = await env.CONVERSATIONS.get('__AI_BASE_URL__');
+            if (kvBaseUrl) status.baseUrl = kvBaseUrl;
+            const kvTimeout = await env.CONVERSATIONS.get('__AI_TIMEOUT__');
+            if (kvTimeout) status.timeout = parseInt(kvTimeout);
+            const kvApiKey = await env.CONVERSATIONS.get('__AI_API_KEY__');
+            if (kvApiKey) status.hasCustomApiKey = true;
+        } catch (_) {}
+        status.systemPrompt = prompt;
 
         return ApiResponse.success(status, 'AI服务状态获取成功');
     } catch (error) {
@@ -115,6 +219,55 @@ async function handleAIStatus(env, ctx) {
         return ApiResponse.error(ErrorMessage.OPENAI_CONFIG_MISSING, BusinessCode.OPENAI_CONFIG_ERROR, 500, {
             error: error.message,
         });
+    }
+}
+
+async function handleSetSystemPrompt(request, env) {
+    try {
+        const body = await request.json();
+        if (typeof body.prompt !== 'string') {
+            return ApiResponse.badRequest('缺少参数 prompt');
+        }
+        await env.CONVERSATIONS.put('__SYSTEM_PROMPT__', body.prompt);
+        return ApiResponse.success(null, '系统提示词已更新');
+    } catch (error) {
+        return ApiResponse.internalError('更新系统提示词失败', { error: error.message });
+    }
+}
+
+async function handleSetAIConfig(request, env) {
+    try {
+        const body = await request.json();
+        if (body.model) await env.CONVERSATIONS.put('__AI_MODEL__', body.model);
+        if (body.baseUrl) await env.CONVERSATIONS.put('__AI_BASE_URL__', body.baseUrl);
+        if (body.timeout) await env.CONVERSATIONS.put('__AI_TIMEOUT__', String(body.timeout));
+        if (body.apiKey) await env.CONVERSATIONS.put('__AI_API_KEY__', body.apiKey);
+        return ApiResponse.success(null, 'AI 配置已更新');
+    } catch (error) {
+        return ApiResponse.internalError('更新AI配置失败', { error: error.message });
+    }
+}
+
+async function handleGetWebhookRules(env) {
+    try {
+        const raw = await env.CONVERSATIONS.get('__WEBHOOK_RULES__');
+        const rules = raw ? JSON.parse(raw) : [];
+        return ApiResponse.success({ rules });
+    } catch (error) {
+        return ApiResponse.internalError('获取Webhook规则失败', { error: error.message });
+    }
+}
+
+async function handleSetWebhookRules(request, env) {
+    try {
+        const body = await request.json();
+        if (!Array.isArray(body.rules)) {
+            return ApiResponse.badRequest('缺少参数 rules');
+        }
+        await env.CONVERSATIONS.put('__WEBHOOK_RULES__', JSON.stringify(body.rules));
+        return ApiResponse.success(null, 'Webhook 规则已更新');
+    } catch (error) {
+        return ApiResponse.internalError('更新Webhook规则失败', { error: error.message });
     }
 }
 
@@ -309,8 +462,18 @@ async function handleUploadMedia(request, env, ctx) {
         const file = form.get('file');
         const filename = form.get('filename');
 
+        if (!file || !(file instanceof File) || file.size === 0) {
+            return ApiResponse.badRequest('文件为空或未提供', {
+                error: `file type: ${typeof file}, size: ${file?.size || 0}`,
+            });
+        }
+
+        if (!mediaType) {
+            return ApiResponse.badRequest('缺少 media_type 参数');
+        }
+
         const wxClient = new WeChatClient(env.WECHAT_CORP_ID, env.WECHAT_KF_SECRET);
-        const result = await wxClient.uploadMedia(mediaType, file, filename);
+        const result = await wxClient.uploadMedia(mediaType, file, filename || file.name);
 
         return ApiResponse.success(result, '上传临时素材成功');
     } catch (error) {
@@ -530,11 +693,59 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
     }
 
     try {
+        // 读取动态系统提示词（KV 优先，环境变量兜底）
+        let systemPrompt = env.SYSTEM_PROMPT || 'you are helpful assistant';
+        try {
+            const kvPrompt = await env.CONVERSATIONS.get('__SYSTEM_PROMPT__');
+            if (kvPrompt) systemPrompt = kvPrompt;
+        } catch (_) {}
+
+        // 检查关键词 Webhook 触发
+        try {
+            const rulesRaw = await env.CONVERSATIONS.get('__WEBHOOK_RULES__');
+            if (rulesRaw) {
+                const rules = JSON.parse(rulesRaw);
+                for (const rule of rules) {
+                    if (!rule.enabled || !rule.webhook_url) continue;
+                    let matched = false;
+                    if (rule.match_mode === 'exact') matched = content === rule.keyword;
+                    else if (rule.match_mode === 'contains') matched = content.includes(rule.keyword);
+                    else if (rule.match_mode === 'regex') {
+                        try { matched = new RegExp(rule.keyword).test(content); } catch (_) {}
+                    }
+                    if (matched) {
+                        const vars = {
+                            content,
+                            external_userid: externalUserid,
+                            open_kfid: msgKfId,
+                            msgid,
+                            keyword: rule.keyword,
+                            timestamp: String(Date.now()),
+                        };
+                        const fillVars = (tpl) => tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
+                        const method = (rule.method || 'POST').toUpperCase();
+                        const url = fillVars(rule.webhook_url);
+                        const fetchOpts = { method, headers: {} };
+                        if (method === 'POST') {
+                            const ct = rule.content_type || 'application/json';
+                            fetchOpts.headers['Content-Type'] = ct;
+                            if (rule.body_template) {
+                                fetchOpts.body = fillVars(rule.body_template);
+                            } else {
+                                fetchOpts.body = JSON.stringify({ event: 'keyword_match', ...vars });
+                            }
+                        }
+                        fetch(url, fetchOpts).catch(() => {});
+                    }
+                }
+            }
+        } catch (_) {}
+
         // 创建对话管理器
         const conversationManager = new ConversationManager(env.CONVERSATIONS, {
             maxHistoryLength: 10,
             expirationTtl: 86400, // 24小时
-            systemPrompt: env.SYSTEM_PROMPT || 'you are helpful assistant',
+            systemPrompt,
         });
 
         // 处理用户消息并获取对话历史
@@ -542,6 +753,16 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
 
         // 调用AI客服
         const aiConfig = getAIConfig(env);
+        try {
+            const kvModel = await env.CONVERSATIONS.get('__AI_MODEL__');
+            if (kvModel) aiConfig.model = kvModel;
+            const kvBaseUrl = await env.CONVERSATIONS.get('__AI_BASE_URL__');
+            if (kvBaseUrl) aiConfig.baseUrl = kvBaseUrl;
+            const kvTimeout = await env.CONVERSATIONS.get('__AI_TIMEOUT__');
+            if (kvTimeout) aiConfig.timeout = parseInt(kvTimeout);
+            const kvApiKey = await env.CONVERSATIONS.get('__AI_API_KEY__');
+            if (kvApiKey) aiConfig.apiKey = kvApiKey;
+        } catch (_) {}
         validateAIConfig(aiConfig);
         const aiClient = new OpenAIClient(aiConfig);
 
@@ -575,6 +796,9 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
             await wxClient.sendTextMessage(externalUserid, msgKfId, assistantMessage);
         }
 
+        // 存储 AI 回复到 KV 供管理后台展示
+        await saveSentMessage(env, msgKfId, externalUserid, 'text', { text: { content: assistantMessage } });
+
         // 标记消息为已处理
         await messageTracker.markMessageAsProcessed(msgid, {
             externalUserid,
@@ -604,6 +828,27 @@ async function processUserMessage(externalUserid, content, msgid, msgKfId, wxCli
 }
 
 /**
+ * 存储发送消息记录到 KV
+ */
+async function saveSentMessage(env, open_kfid, external_userid, msgtype, content) {
+    if (!env.CONVERSATIONS) return;
+    try {
+        const key = `__SENT_MSG__${open_kfid}__${external_userid}`;
+        const existing = await env.CONVERSATIONS.get(key, 'json') || [];
+        existing.push({
+            msgid: `sent_${Date.now()}`,
+            open_kfid,
+            external_userid,
+            send_time: Math.floor(Date.now() / 1000),
+            origin: 5,
+            msgtype,
+            ...content,
+        });
+        await env.CONVERSATIONS.put(key, JSON.stringify(existing.slice(-200)));
+    } catch (_) {}
+}
+
+/**
  * 按长度分割字符串
  */
 function splitStringByLength(str, len) {
@@ -628,4 +873,30 @@ async function wireNote(externalUserid, msgKfId, msgid, question, value, env) {
 
     const result = await wxClient.sendFileMessage(externalUserid, msgKfId, media_id);
     return result.msgid;
+}
+
+/**
+ * 管理界面
+ */
+import { getAdminHTML } from './admin.js';
+
+function handleAdminPage(env) {
+    return new Response(getAdminHTML(), {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+}
+
+/**
+ * 管理接口鉴权
+ * 支持 header: X-Admin-Key 或 query: admin_key
+ */
+function verifyAdminKey(request, env) {
+    if (!env.ADMIN_KEY) return null; // 未配置则跳过鉴权
+    const url = new URL(request.url);
+    const key = request.headers.get('X-Admin-Key') || url.searchParams.get('admin_key');
+    if (key !== env.ADMIN_KEY) {
+        return ApiResponse.unauthorized('管理密钥无效');
+    }
+    return null;
 }

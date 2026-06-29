@@ -16,6 +16,9 @@ WECHAT_KF_ENCODING_AES_KEY=""
 # 加密服务配置（由于 CF Worker CRYPTO 兼容性问题，需要单独部署）
 CRYPTO_SERVICE_URL=""
 
+# 管理界面访问密钥（留空则不鉴权）
+ADMIN_KEY=""
+
 # OpenAI API 配置
 OPENAI_API_KEY=""
 OPENAI_BASE_URL=""

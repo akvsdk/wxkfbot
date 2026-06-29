@@ -431,14 +431,37 @@ export class WeChatClient {
         }
 
         const url = `${this.baseUrl}/media/upload?access_token=${this.accessToken}&type=${mediaType}`;
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('filename', filename);
+
+        const buffer = await file.arrayBuffer();
+        if (!buffer || buffer.byteLength === 0) {
+            throw new Error(`文件内容为空 (size=${file.size}, bufferLen=${buffer?.byteLength})`);
+        }
+
+        const finalName = filename || file.name || 'file';
+        const contentType = file.type || 'application/octet-stream';
+
+        // 手动构建 multipart/form-data 确保 filename 和 content 正确
+        const boundary = '----WebKitFormBoundary' + Math.random().toString(36).slice(2);
+        const encoder = new TextEncoder();
+
+        const header = `--${boundary}\r\nContent-Disposition: form-data; name="media"; filename="${finalName}"; filelength=${buffer.byteLength}\r\nContent-Type: ${contentType}\r\n\r\n`;
+        const footer = `\r\n--${boundary}--\r\n`;
+
+        const headerBytes = encoder.encode(header);
+        const footerBytes = encoder.encode(footer);
+
+        const body = new Uint8Array(headerBytes.length + buffer.byteLength + footerBytes.length);
+        body.set(headerBytes, 0);
+        body.set(new Uint8Array(buffer), headerBytes.length);
+        body.set(footerBytes, headerBytes.length + buffer.byteLength);
 
         try {
             const response = await fetch(url, {
                 method: 'POST',
-                body: formData,
+                headers: {
+                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                },
+                body: body.buffer,
             });
 
             if (!response.ok) {
@@ -447,7 +470,7 @@ export class WeChatClient {
             }
 
             const result = await response.json();
-            if (result.errcode !== 0) {
+            if (result.errcode !== 0 && result.errcode !== undefined) {
                 throw new Error(`上传临时素材失败: ${JSON.stringify(result)}`);
             }
 

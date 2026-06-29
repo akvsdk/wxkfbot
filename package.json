@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "build:admin": "cd admin && npm run build && cd .. && node scripts/build-admin.mjs",
     "deploy": "wrangler deploy",
     "deploy:prod": "wrangler deploy --env production",
     "deploy:dev": "wrangler deploy --env development",
