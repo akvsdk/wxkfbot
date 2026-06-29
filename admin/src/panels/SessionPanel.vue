@@ -267,7 +267,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, markRaw } from 'vue'
 import { ElMessage } from 'element-plus'
 import { EditPen, Picture, Microphone, VideoCamera, Document, Link, Monitor, Menu, Location } from '@element-plus/icons-vue'
-import { api } from '../api'
+import { api, mediaUrl } from '../api'
 
 const loading = ref(false)
 const msgLoading = ref(false)
@@ -371,34 +371,34 @@ function renderMessage(msg: any) {
   const t = msg.msgtype
   if (t === 'text') return escapeHtml(msg.text?.content || msg.text?.menu_id || '')
   if (t === 'image') {
-    const mediaId = msg.image?.media_id
-    if (mediaId) {
-      return `<img class="msg-img" src="/kf/media?media_id=${encodeURIComponent(mediaId)}" alt="图片" loading="lazy" onclick="window.open(this.src)" />`
+    const mid = msg.image?.media_id
+    if (mid) {
+      return `<img class="msg-img" src="${mediaUrl(mid)}" alt="图片" loading="lazy" onclick="window.open(this.src)" />`
     }
     return `<span class="media-tag"><svg class="inline-icon" viewBox="0 0 1024 1024"><path d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zM338 304c35.3 0 64 28.7 64 64s-28.7 64-64 64-64-28.7-64-64 28.7-64 64-64zm550 512H136c-4.4 0-8-3.6-8-8v-72l154-154 92 92 216-216 306 306v44c0 4.4-3.6 8-8 8z"/></svg> 图片</span>`
   }
   if (t === 'voice') {
-    const mediaId = msg.voice?.media_id
-    if (mediaId) {
-      return `<div class="msg-voice"><svg class="inline-icon voice-icon" viewBox="0 0 1024 1024"><path d="M512 704c106 0 192-86 192-192V256c0-106-86-192-192-192S320 150 320 256v256c0 106 86 192 192 192zm-64-448c0-35.3 28.7-64 64-64s64 28.7 64 64v256c0 35.3-28.7 64-64 64s-64-28.7-64-64V256zm320 256c0 141.4-114.6 256-256 256S256 653.4 256 512h-64c0 159.1 117.8 290.6 272 311.5V896h-96v64h256v-64h-96v-72.5c154.2-20.9 272-152.4 272-311.5h-64z"/></svg><span class="voice-dur">${msg.voice?.duration ? Math.ceil(msg.voice.duration / 1000) + '"' : ''}</span><audio src="/kf/media?media_id=${encodeURIComponent(mediaId)}" controls preload="none"></audio></div>`
+    const mid = msg.voice?.media_id
+    if (mid) {
+      return `<div class="msg-voice"><svg class="inline-icon voice-icon" viewBox="0 0 1024 1024"><path d="M512 704c106 0 192-86 192-192V256c0-106-86-192-192-192S320 150 320 256v256c0 106 86 192 192 192zm-64-448c0-35.3 28.7-64 64-64s64 28.7 64 64v256c0 35.3-28.7 64-64 64s-64-28.7-64-64V256zm320 256c0 141.4-114.6 256-256 256S256 653.4 256 512h-64c0 159.1 117.8 290.6 272 311.5V896h-96v64h256v-64h-96v-72.5c154.2-20.9 272-152.4 272-311.5h-64z"/></svg><span class="voice-dur">${msg.voice?.duration ? Math.ceil(msg.voice.duration / 1000) + '"' : ''}</span><audio src="${mediaUrl(mid)}" controls preload="none"></audio></div>`
     }
     return `<span class="media-tag"><svg class="inline-icon" viewBox="0 0 1024 1024"><path d="M512 704c106 0 192-86 192-192V256c0-106-86-192-192-192S320 150 320 256v256c0 106 86 192 192 192z"/></svg> 语音</span>`
   }
   if (t === 'video') {
-    const mediaId = msg.video?.media_id
-    if (mediaId) {
-      return `<video class="msg-video" src="/kf/media?media_id=${encodeURIComponent(mediaId)}" controls preload="metadata"></video>`
+    const mid = msg.video?.media_id
+    if (mid) {
+      return `<video class="msg-video" src="${mediaUrl(mid)}" controls preload="metadata"></video>`
     }
     return `<span class="media-tag"><svg class="inline-icon" viewBox="0 0 1024 1024"><path d="M912 302.3L784 376V224c0-35.3-28.7-64-64-64H128c-35.3 0-64 28.7-64 64v576c0 35.3 28.7 64 64 64h592c35.3 0 64-28.7 64-64V648l128 73.7c21.3 12.3 48-3.1 48-27.6V330c0-24.6-26.7-40-48-27.7z"/></svg> 视频</span>`
   }
   if (t === 'file') {
-    const mediaId = msg.file?.media_id
+    const mid = msg.file?.media_id
     const fileName = msg.file?.file_name || '文件'
     const fileSize = msg.file?.file_size ? formatFileSize(msg.file.file_size) : ''
     const ext = fileName.split('.').pop()?.toLowerCase() || ''
     const iconSvg = getFileIcon(ext)
-    if (mediaId) {
-      return `<a class="msg-file" href="/kf/media?media_id=${encodeURIComponent(mediaId)}" target="_blank" download="${escapeHtml(fileName)}">${iconSvg}<div class="file-info"><span class="file-name">${escapeHtml(fileName)}</span><span class="file-size">${fileSize}</span></div></a>`
+    if (mid) {
+      return `<a class="msg-file" href="${mediaUrl(mid)}" target="_blank" download="${escapeHtml(fileName)}">${iconSvg}<div class="file-info"><span class="file-name">${escapeHtml(fileName)}</span><span class="file-size">${fileSize}</span></div></a>`
     }
     return `<span class="media-tag">${iconSvg} ${escapeHtml(fileName)}</span>`
   }
@@ -532,7 +532,17 @@ async function loadMessages(silent = false) {
       .filter((m: any) => m.external_userid === current.value.external_userid && m.open_kfid === current.value.open_kfid)
     const sentMsgs = sentRes?.msg_list || []
 
-    const merged = [...incomingMsgs, ...sentMsgs]
+    // 去重：以 msgid 为主键，sent_ 前缀的消息如果 sync 里已有相同时间和类型则跳过
+    const seen = new Set(incomingMsgs.map((m: any) => m.msgid))
+    const incomingTimes = new Set(incomingMsgs.map((m: any) => `${m.send_time}_${m.msgtype}_${m.origin}`))
+    const dedupedSent = sentMsgs.filter((m: any) => {
+      if (seen.has(m.msgid)) return false
+      // 如果 sync 已包含相同时间+类型+origin=5 的消息，视为重复
+      if (incomingTimes.has(`${m.send_time}_${m.msgtype}_5`)) return false
+      return true
+    })
+
+    const merged = [...incomingMsgs, ...dedupedSent]
       .sort((a: any, b: any) => (a.send_time || 0) - (b.send_time || 0))
     const hadNewMsg = merged.length > messages.value.length
     messages.value = merged
@@ -724,30 +734,8 @@ async function uploadMedia() {
     form.append('file', mediaFile.value)
     form.append('filename', mediaFileName.value)
 
-    const res: any = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      const base = import.meta.env.VITE_API_BASE || ''
-      xhr.open('POST', `${base}/upload_media`)
-      const key = localStorage.getItem('wxkf_admin_key') || ''
-      if (key) xhr.setRequestHeader('X-Admin-Key', key)
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-        }
-      }
-      xhr.onload = () => {
-        try {
-          const json = JSON.parse(xhr.responseText)
-          if (xhr.status === 401) return reject(new Error('UNAUTHORIZED'))
-          if (xhr.status >= 400 || !json.success) {
-            const detail = json.details?.error || ''
-            return reject(new Error(detail ? `${json.message}: ${detail}` : (json.message || '上传失败')))
-          }
-          resolve(json.data)
-        } catch { reject(new Error('解析响应失败')) }
-      }
-      xhr.onerror = () => reject(new Error('网络错误'))
-      xhr.send(form)
+    const res: any = await api.upload('/upload_media', form, (percent) => {
+      uploadProgress.value = percent
     })
 
     mediaId.value = res.media_id

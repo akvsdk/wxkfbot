@@ -127,6 +127,22 @@ export async function handleKFSendMessage(request, env) {
         }
         const kf = createKFRouter(env);
         const result = await kf.request('POST', '/kf/send_msg', body);
+        // 保存已发消息到 KV，供前端立即显示
+        try {
+            const key = `__SENT_MSG__${body.open_kfid}__${body.touser}`;
+            const existing = await env.CONVERSATIONS.get(key, 'json') || [];
+            const { touser, open_kfid, msgtype, ...content } = body;
+            existing.push({
+                msgid: result?.msgid || `sent_${Date.now()}`,
+                open_kfid,
+                external_userid: touser,
+                send_time: Math.floor(Date.now() / 1000),
+                origin: 5,
+                msgtype,
+                ...content,
+            });
+            await env.CONVERSATIONS.put(key, JSON.stringify(existing.slice(-200)));
+        } catch (_) {}
         return ApiResponse.success(result, '发送消息成功');
     } catch (error) {
         await getLogger(env).error('wechat-api', `发送消息失败: ${error.message}`, {
