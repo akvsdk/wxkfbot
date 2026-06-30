@@ -112,7 +112,7 @@ async function syncMessages() {
 <style scoped>
 .panel-card { border-radius: var(--card-radius, 8px); }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
-.card-title { font-weight: 600; font-size: 14px; }
+.card-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
 .cursor-info { margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
-.mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+.mono { font-family: var(--font-mono, 'JetBrains Mono', monospace); }
 </style>

@@ -244,12 +244,20 @@ onMounted(() => {
 <style scoped>
 .panel-card { border-radius: var(--card-radius, 8px); }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
-.card-title { font-weight: 600; font-size: 14px; }
-.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; }
-.form-tip { font-size: 12px; color: #999; margin-top: 8px; }
-.form-unit { margin-left: 8px; font-size: 13px; color: #666; }
+.card-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.mono { font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 13px; }
+.form-tip { font-size: 12px; color: var(--text-muted, #999); margin-top: 8px; }
+.form-tip code { font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 11px; background: var(--bg-elevated, #f7f7f7); padding: 1px 4px; border-radius: 3px; }
+.form-unit { margin-left: 8px; font-size: 13px; color: var(--text-secondary, #666); }
 .form-actions { display: flex; justify-content: flex-end; }
 .form-hint-inline { margin-left: 8px; font-size: 12px; color: var(--accent, #07C160); }
+
+.webhook-rule-card { padding: 12px; margin-bottom: 12px; border: 1px solid var(--border, #e0e0e0); border-radius: var(--radius, 6px); background: var(--bg-elevated, #f7f7f7); }
+.rule-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.rule-num { font-size: 13px; font-weight: 500; color: var(--text-secondary, #666); }
+.rule-label { font-size: 12px; color: var(--text-muted, #999); margin-bottom: 4px; }
+.rule-hint { font-size: 11px; color: var(--text-muted, #999); font-weight: normal; }
+
 .about-section { font-size: 13px; color: var(--text-secondary, #666); }
 .about-section p { margin-bottom: 6px; }
 .about-link { display: flex; align-items: center; gap: 6px; }

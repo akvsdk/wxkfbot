@@ -144,11 +144,11 @@ onMounted(loadAccounts)
 <style scoped>
 .panel-card { border-radius: var(--card-radius, 8px); }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
-.card-title { font-weight: 600; font-size: 14px; }
+.card-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
 .stat-cards { margin-top: 16px; }
 .stat-card { border-radius: var(--card-radius, 8px); text-align: center; padding: 8px 0; }
-.stat-value { font-size: 32px; font-weight: 700; color: #07C160; line-height: 1.2; }
-.stat-label { font-size: 13px; color: #999; margin-top: 6px; }
+.stat-value { font-size: 32px; font-weight: 700; color: var(--accent, #07C160); line-height: 1.2; }
+.stat-label { font-size: 13px; color: var(--text-muted, #999); margin-top: 6px; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

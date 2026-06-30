@@ -1,5 +1,5 @@
 <template>
-  <div class="debug-panel">
+  <div class="panel">
     <el-card shadow="never" class="panel-card">
       <template #header>
         <div class="card-header">
@@ -123,22 +123,22 @@ function formatTime(ts: number) {
 <style scoped>
 .panel-card { border-radius: var(--card-radius, 8px); }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
-.card-title { font-weight: 600; font-size: 14px; }
+.card-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
 .header-actions { display: flex; gap: 8px; }
-.form-tip { font-size: 12px; color: #999; }
+.form-tip { font-size: 12px; color: var(--text-muted, #999); }
 .switch-group { display: flex; align-items: center; gap: 8px; }
-.switch-label { font-size: 13px; color: #999; }
-.switch-label.active { color: var(--el-color-success, #67c23a); }
+.switch-label { font-size: 13px; color: var(--text-muted, #999); }
+.switch-label.active { color: var(--accent, #07C160); }
 .empty-state { padding: 20px 0; }
 .log-list { display: flex; flex-direction: column; gap: 12px; max-height: 600px; overflow-y: auto; }
-.log-item { padding: 10px 12px; border-radius: 6px; background: var(--bg-surface, #f9f9f9); border: 1px solid var(--border, #eee); }
-.log-item.error { border-left: 3px solid var(--el-color-danger); }
-.log-item.warn { border-left: 3px solid var(--el-color-warning); }
-.log-item.info { border-left: 3px solid var(--el-color-info); }
+.log-item { padding: 10px 12px; border-radius: var(--radius, 6px); background: var(--bg-elevated, #f7f7f7); border: 1px solid var(--border, #e0e0e0); }
+.log-item.error { border-left: 3px solid var(--danger, #fa5151); }
+.log-item.warn { border-left: 3px solid var(--warning, #f0a000); }
+.log-item.info { border-left: 3px solid var(--info, #1989fa); }
 .log-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.log-source { font-size: 12px; color: var(--text-secondary, #666); font-family: 'SF Mono', 'Fira Code', monospace; }
-.log-time { font-size: 11px; color: #999; margin-left: auto; }
-.log-message { font-size: 13px; color: var(--text-primary, #333); word-break: break-all; }
+.log-source { font-size: 12px; color: var(--text-secondary, #666); font-family: var(--font-mono, 'JetBrains Mono', monospace); }
+.log-time { font-size: 11px; color: var(--text-muted, #999); margin-left: auto; }
+.log-message { font-size: 13px; color: var(--text-primary); word-break: break-all; }
 .log-detail { margin-top: 6px; }
-.detail-pre { font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 8px; background: var(--bg-elevated, #f0f0f0); border-radius: 4px; max-height: 200px; overflow-y: auto; }
+.detail-pre { font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 8px; background: var(--bg-elevated, #f7f7f7); border-radius: 4px; max-height: 200px; overflow-y: auto; }
 </style>
