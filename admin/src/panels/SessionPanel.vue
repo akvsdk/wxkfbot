@@ -47,14 +47,12 @@
           </div>
           <div class="chat-actions">
             <el-button size="small" @click="openTrans">变更状态</el-button>
-            <el-button size="small" @click="loadMessages" :loading="msgLoading">刷新消息</el-button>
+            <el-button size="small" @click="refreshMessages" :loading="msgLoading">刷新消息</el-button>
           </div>
         </div>
 
         <!-- 消息列表 -->
-        <div class="chat-messages" ref="msgContainer" @scroll="handleMessagesScroll">
-          <div v-if="loadingMore" class="load-more-tip">加载中...</div>
-          <div v-else-if="hasMore" class="load-more-tip clickable" @click="loadMoreMessages">加载更多</div>
+        <div class="chat-messages" ref="msgContainer">
           <div v-for="msg in messages" :key="msg.msgid" class="msg-row" :class="msgDirection(msg)">
             <template v-if="msgDirection(msg) === 'incoming'">
               <div class="msg-avatar">
@@ -273,7 +271,6 @@ import { api, mediaUrl } from '../api'
 
 const loading = ref(false)
 const msgLoading = ref(false)
-const loadingMore = ref(false)
 const sending = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref(0)
@@ -287,8 +284,7 @@ const sessions = ref<any[]>([])
 const current = ref<any>(null)
 const messages = ref<any[]>([])
 const msgContainer = ref<HTMLElement>()
-const hasMore = ref(false)
-const nextCursor = ref('')
+const syncToken = ref('')
 
 const msgType = ref('text')
 const textContent = ref('')
@@ -522,6 +518,8 @@ async function loadSessions() {
 
 async function selectSession(s: any) {
   current.value = s
+  messages.value = []
+  syncToken.value = ''
   await loadMessages()
 }
 
@@ -529,18 +527,28 @@ async function loadMessages(silent = false) {
   if (!current.value) return
   if (!silent) msgLoading.value = true
   try {
-    const [syncRes, sentRes] = await Promise.all([
-      api.post('/kf/sync_msg', { limit: 50, open_kfid: current.value.open_kfid }),
-      api.post('/kf/sent_messages', { open_kfid: current.value.open_kfid, external_userid: current.value.external_userid }),
-    ])
-    const incomingMsgs = (syncRes?.msg_list || [])
-      .filter((m: any) => m.external_userid === current.value.external_userid && m.open_kfid === current.value.open_kfid)
-    const sentMsgs = sentRes?.msg_list || []
-    hasMore.value = !!syncRes?.has_more
-    nextCursor.value = syncRes?.next_cursor || ''
+    // 首次全量拉取：循环拉直到 has_more=false
+    let allMsgs: any[] = []
+    let cursor = ''
+    let token = ''
+    while (true) {
+      const params: any = { limit: 1000, open_kfid: current.value.open_kfid }
+      if (cursor) params.cursor = cursor
+      const syncRes = await api.post('/kf/sync_msg', params)
+      const batch = (syncRes?.msg_list || [])
+        .filter((m: any) => m.external_userid === current.value.external_userid && m.open_kfid === current.value.open_kfid)
+      allMsgs = allMsgs.concat(batch)
+      token = syncRes?.next_cursor || ''
+      if (!syncRes?.has_more) break
+      cursor = syncRes.next_cursor || ''
+    }
+    // 保存 token 用于后续增量同步
+    syncToken.value = token
 
-    const merged = deduplicateMessages(incomingMsgs, sentMsgs)
-    messages.value = merged
+    const sentRes = await api.post('/kf/sent_messages', { open_kfid: current.value.open_kfid, external_userid: current.value.external_userid })
+    const sentMsgs = sentRes?.msg_list || []
+
+    messages.value = deduplicateMessages(allMsgs, sentMsgs)
     await nextTick()
     scrollToBottom()
   } catch (_) {
@@ -550,36 +558,36 @@ async function loadMessages(silent = false) {
   }
 }
 
-async function loadMoreMessages() {
-  if (!current.value || !hasMore.value || loadingMore.value) return
-  loadingMore.value = true
-  const container = msgContainer.value
-  const prevHeight = container?.scrollHeight || 0
+async function refreshMessages() {
+  if (!current.value) return
+  if (!syncToken.value) { await loadMessages(); return }
+  msgLoading.value = true
   try {
     const syncRes = await api.post('/kf/sync_msg', {
-      limit: 50,
+      limit: 1000,
       open_kfid: current.value.open_kfid,
-      cursor: nextCursor.value,
+      token: syncToken.value,
     })
-    const olderMsgs = (syncRes?.msg_list || [])
+    const newMsgs = (syncRes?.msg_list || [])
       .filter((m: any) => m.external_userid === current.value.external_userid && m.open_kfid === current.value.open_kfid)
-    hasMore.value = !!syncRes?.has_more
-    nextCursor.value = syncRes?.next_cursor || ''
+    if (syncRes?.next_cursor) syncToken.value = syncRes.next_cursor
 
-    if (olderMsgs.length) {
+    const sentRes = await api.post('/kf/sent_messages', { open_kfid: current.value.open_kfid, external_userid: current.value.external_userid })
+    const sentMsgs = sentRes?.msg_list || []
+
+    if (newMsgs.length || sentMsgs.length) {
       const existingIds = new Set(messages.value.map((m: any) => m.msgid))
-      const newMsgs = olderMsgs.filter((m: any) => !existingIds.has(m.msgid))
-      messages.value = [...newMsgs, ...messages.value]
-        .sort((a: any, b: any) => (a.send_time || 0) - (b.send_time || 0))
-      await nextTick()
-      if (container) {
-        container.scrollTop = container.scrollHeight - prevHeight
+      const incomingNew = newMsgs.filter((m: any) => !existingIds.has(m.msgid))
+      const allIncoming = [...messages.value.filter((m: any) => !m.msgid.startsWith('sent_')), ...incomingNew]
+      messages.value = deduplicateMessages(allIncoming, sentMsgs)
+      if (incomingNew.length) {
+        await nextTick()
+        scrollToBottom()
       }
     }
-  } catch (_) {
-    ElMessage.error('加载更多消息失败')
-  } finally {
-    loadingMore.value = false
+  } catch (_) {}
+  finally {
+    msgLoading.value = false
   }
 }
 
@@ -593,14 +601,6 @@ function deduplicateMessages(incomingMsgs: any[], sentMsgs: any[]) {
   })
   return [...incomingMsgs, ...dedupedSent]
     .sort((a: any, b: any) => (a.send_time || 0) - (b.send_time || 0))
-}
-
-function handleMessagesScroll() {
-  const container = msgContainer.value
-  if (!container) return
-  if (container.scrollTop < 60 && hasMore.value && !loadingMore.value) {
-    loadMoreMessages()
-  }
 }
 
 function scrollToBottom() {
@@ -617,7 +617,7 @@ async function sendCurrentMsg() {
     await api.post('/kf/send_msg', payload)
     ElMessage.success('发送成功')
     resetInput()
-    await loadMessages()
+    await refreshMessages()
   } catch (e: any) {
     ElMessage.error(e.message)
   } finally {
@@ -799,7 +799,7 @@ async function recallMsg(msgid: string) {
   try {
     await api.post('/kf/recall_msg', { msgid, open_kfid: current.value.open_kfid })
     ElMessage.success('撤回成功')
-    await loadMessages()
+    await refreshMessages()
   } catch (e: any) {
     ElMessage.error(e.message)
   }
@@ -838,7 +838,7 @@ onMounted(() => {
   loadSessions()
   pollTimer = setInterval(() => {
     if (current.value) {
-      loadMessages(true)
+      refreshMessages()
     }
   }, 30000)
 })

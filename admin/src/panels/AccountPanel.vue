@@ -60,18 +60,43 @@
     </el-dialog>
 
     <!-- 编辑对话框 -->
-    <el-dialog v-model="showEditDialog" title="编辑客服帐号" width="440px" destroy-on-close>
+    <el-dialog v-model="showEditDialog" title="编辑客服帐号" width="500px" destroy-on-close>
       <el-form :model="editForm" label-width="80px">
         <el-form-item label="名称">
           <el-input v-model="editForm.name" placeholder="新名称" />
         </el-form-item>
-        <el-form-item label="头像ID">
-          <el-input v-model="editForm.media_id" placeholder="新media_id" />
+        <el-form-item label="头像">
+          <div class="avatar-edit">
+            <div class="avatar-preview">
+              <el-avatar :size="64" :src="editForm.avatarPreview || editForm.currentAvatar || undefined">
+                <el-icon :size="28"><User /></el-icon>
+              </el-avatar>
+              <div class="avatar-status" v-if="editForm.media_id">
+                <el-tag type="success" size="small" effect="plain" round>已就绪</el-tag>
+              </div>
+            </div>
+            <div class="avatar-actions">
+              <el-button size="small" @click="triggerAvatarSelect">选择图片</el-button>
+              <el-button v-if="editForm.avatarPreview" size="small" type="danger" plain @click="clearAvatar">移除</el-button>
+            </div>
+            <input ref="avatarInputRef" type="file" accept="image/png,image/jpeg" hidden @change="handleAvatarSelect" />
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleUpdate" :loading="submitting">确定</el-button>
+        <el-button type="primary" @click="handleUpdate" :loading="submitting">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 头像裁切对话框 -->
+    <el-dialog v-model="showCropDialog" title="裁切头像" width="520px" destroy-on-close @closed="destroyCropper">
+      <div class="crop-container">
+        <img ref="cropImgRef" :src="cropImgSrc" class="crop-image" />
+      </div>
+      <template #footer>
+        <el-button @click="showCropDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmCrop" :loading="avatarUploading">确认并上传</el-button>
       </template>
     </el-dialog>
 
@@ -92,9 +117,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
+import Cropper from 'cropperjs'
+import 'cropperjs/dist/cropper.css'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -103,10 +130,17 @@ const accounts = ref<any[]>([])
 const showAddDialog = ref(false)
 const showEditDialog = ref(false)
 const showLinkDialog = ref(false)
+const showCropDialog = ref(false)
 const contactUrl = ref('')
 
 const addForm = ref({ name: '', media_id: '' })
-const editForm = ref({ open_kfid: '', name: '', media_id: '' })
+const editForm = ref({ open_kfid: '', name: '', media_id: '', currentAvatar: '', avatarPreview: '' })
+
+const avatarInputRef = ref<HTMLInputElement>()
+const cropImgRef = ref<HTMLImageElement>()
+const cropImgSrc = ref('')
+const avatarUploading = ref(false)
+let cropper: Cropper | null = null
 
 async function loadAccounts() {
   loading.value = true
@@ -140,8 +174,93 @@ async function handleAdd() {
 }
 
 function openEdit(row: any) {
-  editForm.value = { open_kfid: row.open_kfid, name: row.name, media_id: '' }
+  editForm.value = {
+    open_kfid: row.open_kfid,
+    name: row.name,
+    media_id: '',
+    currentAvatar: row.avatar || '',
+    avatarPreview: '',
+  }
   showEditDialog.value = true
+}
+
+function triggerAvatarSelect() {
+  avatarInputRef.value?.click()
+}
+
+function handleAvatarSelect(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.size > 2 * 1024 * 1024) {
+    ElMessage.warning('图片大小不能超过 2MB')
+    input.value = ''
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    cropImgSrc.value = ev.target?.result as string
+    showCropDialog.value = true
+    nextTick(() => initCropper())
+  }
+  reader.readAsDataURL(file)
+  input.value = ''
+}
+
+function initCropper() {
+  if (!cropImgRef.value) return
+  destroyCropper()
+  cropper = new Cropper(cropImgRef.value, {
+    aspectRatio: 1,
+    viewMode: 1,
+    dragMode: 'move',
+    autoCropArea: 0.9,
+    cropBoxResizable: true,
+    cropBoxMovable: true,
+    guides: true,
+    center: true,
+    background: true,
+  })
+}
+
+function destroyCropper() {
+  if (cropper) {
+    cropper.destroy()
+    cropper = null
+  }
+}
+
+async function confirmCrop() {
+  if (!cropper) return
+  avatarUploading.value = true
+  try {
+    const canvas = cropper.getCroppedCanvas({
+      width: 300,
+      height: 300,
+      imageSmoothingQuality: 'high',
+    })
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('裁切失败')), 'image/png')
+    })
+    const form = new FormData()
+    form.append('media_type', 'image')
+    form.append('file', blob, 'avatar.png')
+    form.append('filename', 'avatar.png')
+    const res: any = await api.upload('/upload_media', form)
+    editForm.value.media_id = res.media_id
+    editForm.value.avatarPreview = canvas.toDataURL('image/png')
+    showCropDialog.value = false
+    ElMessage.success('头像上传成功')
+  } catch (e: any) {
+    ElMessage.error(e.message || '头像上传失败')
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+function clearAvatar() {
+  editForm.value.media_id = ''
+  editForm.value.avatarPreview = ''
 }
 
 async function handleUpdate() {
@@ -199,4 +318,37 @@ onMounted(loadAccounts)
 .account-cell { display: flex; align-items: center; gap: 10px; }
 .account-name { font-weight: 500; }
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+
+.avatar-edit {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.avatar-preview {
+  position: relative;
+}
+.avatar-status {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crop-container {
+  width: 100%;
+  height: 360px;
+  background: #1a1a1a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.crop-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
 </style>
