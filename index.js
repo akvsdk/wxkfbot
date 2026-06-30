@@ -50,6 +50,12 @@ export default {
                 return handleSetAIConfig(request, env);
             }
 
+            if (url.pathname === '/ai_models' && request.method === 'GET') {
+                const authError = verifyAdminKey(request, env);
+                if (authError) return authError;
+                return handleListModels(env);
+            }
+
             if (url.pathname === '/webhook_rules' && request.method === 'GET') {
                 const authError = verifyAdminKey(request, env);
                 if (authError) return authError;
@@ -273,6 +279,33 @@ async function handleSetAIConfig(request, env) {
         return ApiResponse.success(null, 'AI 配置已更新');
     } catch (error) {
         return ApiResponse.internalError('更新AI配置失败', { error: error.message });
+    }
+}
+
+async function handleListModels(env) {
+    try {
+        let baseUrl = env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+        let apiKey = env.OPENAI_API_KEY || '';
+        try {
+            const kvBaseUrl = await env.CONVERSATIONS.get('__AI_BASE_URL__');
+            if (kvBaseUrl) baseUrl = kvBaseUrl;
+            const kvApiKey = await env.CONVERSATIONS.get('__AI_API_KEY__');
+            if (kvApiKey) apiKey = kvApiKey;
+        } catch (_) {}
+        if (!apiKey) return ApiResponse.badRequest('未配置 API Key');
+        const endpoint = baseUrl.replace(/\/$/, '') + '/models';
+        const resp = await fetch(endpoint, {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+        });
+        if (!resp.ok) {
+            const text = await resp.text();
+            return ApiResponse.error('拉取模型列表失败', 500, resp.status, { detail: text });
+        }
+        const json = await resp.json();
+        const models = (json.data || []).map(m => m.id).sort();
+        return ApiResponse.success({ models });
+    } catch (error) {
+        return ApiResponse.internalError('拉取模型列表失败', { error: error.message });
     }
 }
 

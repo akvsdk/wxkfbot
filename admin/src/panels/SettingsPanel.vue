@@ -15,7 +15,18 @@
           <span v-if="hasCustomApiKey" class="form-hint-inline">已配置自定义 Key</span>
         </el-form-item>
         <el-form-item label="模型名称">
-          <el-input v-model="aiForm.model" placeholder="如 gpt-4o、deepseek-chat" />
+          <el-select
+            v-model="aiForm.model"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="输入或选择模型"
+            style="width: 100%"
+            :loading="loadingModels"
+          >
+            <el-option v-for="m in modelList" :key="m" :label="m" :value="m" />
+          </el-select>
+          <el-button link type="primary" @click="fetchModels" :loading="loadingModels" style="margin-left:8px">拉取模型</el-button>
         </el-form-item>
         <el-form-item label="Base URL">
           <el-input v-model="aiForm.baseUrl" placeholder="如 https://api.openai.com/v1" />
@@ -141,6 +152,21 @@ const hasCustomApiKey = ref(false)
 
 const aiForm = ref({ model: '', baseUrl: '', timeout: 30000, apiKey: '' })
 const webhookRules = ref<any[]>([])
+const modelList = ref<string[]>([])
+const loadingModels = ref(false)
+
+async function fetchModels() {
+  loadingModels.value = true
+  try {
+    const res = await api.get('/ai_models')
+    modelList.value = res?.models || []
+    if (!modelList.value.length) ElMessage.info('未获取到模型列表')
+  } catch (e: any) {
+    ElMessage.error(e.message || '拉取模型失败')
+  } finally {
+    loadingModels.value = false
+  }
+}
 
 async function loadStatus() {
   try {

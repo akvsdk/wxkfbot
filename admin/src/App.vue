@@ -196,6 +196,12 @@ html, body { height: 100%; background: var(--bg-root); color: var(--text-primary
 .el-tag--info { --el-tag-bg-color: rgba(25, 137, 250, 0.1); --el-tag-text-color: var(--info); }
 .el-tag--success { --el-tag-bg-color: var(--accent-dim); --el-tag-text-color: var(--accent); }
 .el-descriptions { --el-descriptions-item-bordered-label-background: var(--bg-elevated); }
+.el-input.is-focus .el-input__wrapper,
+.el-input .el-input__wrapper:focus-within,
+.el-textarea.is-focus .el-textarea__inner,
+.el-textarea .el-textarea__inner:focus,
+.el-select .el-input.is-focus .el-input__wrapper { box-shadow: 0 0 0 1px var(--accent) inset !important; }
+.el-input__wrapper:hover, .el-textarea__inner:hover { box-shadow: 0 0 0 1px var(--accent) inset !important; }
 .el-empty__description p { color: var(--text-muted) !important; }
 .el-message-box { --el-messagebox-title-color: var(--text-primary); background: var(--bg-surface) !important; border-color: var(--border) !important; }
 .el-overlay-dialog .el-dialog__header { border-bottom: 1px solid var(--border); }
